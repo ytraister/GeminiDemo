@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>合成大西瓜 - 最终版</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Matter.js 物理引擎 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #ffe8a3; touch-action: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; -webkit-user-select: none; }
+        #game-container { position: relative; width: 100%; height: 100vh; display: flex; justify-content: center; align-items: flex-end; background: #ffe8a3; }
+        
+        /* 游戏画布 */
+        canvas { display: block; box-shadow: 0 0 20px rgba(0,0,0,0.1); border-radius: 4px; z-index: 1; }
+        
+        /* 烟花画布 */
+        #fireworks-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10;
+        }
+
+        /* UI 层 */
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; z-index: 20; }
+        .top-bar { pointer-events: auto; padding: 12px 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+        
+        .score-board {
+            background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(4px); padding: 8px 12px; border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 2px;
+        }
+        .score-item { display: flex; align-items: baseline; gap: 6px; }
+        .score-label { font-size: 10px; color: #666; font-weight: bold; text-transform: uppercase; }
+        .score-value { font-size: 18px; font-weight: 900; color: #333; line-height: 1; }
+        .score-value.best { color: #e11d48; }
+
+        .btn-icon {
+            background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(4px); width: 40px; height: 40px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center; font-size: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            cursor: pointer; border: none; transition: transform 0.1s;
+        }
+        .btn-icon:active { transform: scale(0.9); }
+
+        .btn { border: none; outline: none; cursor: pointer; border-radius: 50px; font-weight: bold; transition: transform 0.1s; user-select: none; }
+        .btn:active { transform: scale(0.96); }
+        .btn-green { background: #10b981; color: white; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); }
+        .btn-gray { background: #e5e7eb; color: #374151; }
+        
+        #home-screen { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #ffe8a3; z-index: 100; pointer-events: auto;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            overflow-y: auto; 
+        }
+
+        .modal-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); pointer-events: auto; justify-content: center; align-items: center; flex-direction: column; z-index: 50; backdrop-filter: blur(2px); }
+        .modal-content { background: white; padding: 24px; border-radius: 20px; text-align: center; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); width: 85%; max-width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* 警戒线: 使用 18% 的高度，实现自适应 */
+        .guide-line { 
+            position: absolute; top: 18%; left: 0; width: 100%; border-top: 2px dashed #f43f5e; opacity: 0.6; pointer-events: none; z-index: 5; 
+        }
+
+        .switch-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+        .switch-row:last-child { border-bottom: none; }
+        .toggle-switch { position: relative; width: 44px; height: 24px; background: #e5e7eb; border-radius: 24px; transition: 0.3s; cursor: pointer; }
+        .toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .toggle-switch.active { background: #10b981; }
+        .toggle-switch.active::after { left: 22px; }
+
+        /* 弹窗样式 */
+        #watermelon-toast {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+            background: rgba(255, 255, 255, 0.95); padding: 16px 32px; border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); z-index: 100; display: flex; flex-direction: column; align-items: center;
+            opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); border: 2px solid #10b981;
+        }
+        #watermelon-toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="fireworks-canvas"></canvas>
+
+    <div id="home-screen">
+        <div class="mb-6 text-center transform scale-110 mt-8">
+            <h1 class="text-5xl font-black text-green-700 tracking-wider mb-2" style="text-shadow: 3px 3px 0px #fff;">合成大西瓜</h1>
+            <p class="text-green-800/70 font-bold tracking-widest text-sm">FINAL EDITION</p>
+        </div>
+        
+        <div id="home-watermelon-record" class="mb-6 px-5 py-3 bg-red-100/90 border-2 border-red-200 rounded-xl flex items-center justify-center gap-2 shadow-sm" style="display: none;">
+            <span class="text-2xl filter drop-shadow-sm">🍉</span>
+            <div class="flex items-baseline">
+                <span class="text-sm font-bold text-red-500 tracking-wide">今日总合成大西瓜数：</span>
+                <span id="home-total-watermelon" class="text-2xl font-black text-red-600 leading-none mx-1">0</span>
+                <span class="text-sm font-bold text-red-400">个</span>
+            </div>
+        </div>
+
+        <div class="bg-white/90 backdrop-blur-md p-6 rounded-2xl shadow-xl w-3/4 max-w-sm mb-10 border border-white/50">
+            <h3 class="text-sm font-bold text-gray-500 uppercase mb-3 flex items-center justify-center gap-2 tracking-wider">👑 分数排行榜 Top 3</h3>
+            <ul id="leaderboard-list" class="space-y-2"></ul>
+        </div>
+        
+        <button onclick="startGame()" class="btn btn-green text-xl px-12 py-4 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all mb-8">开始游戏</button>
+    </div>
+
+    <div id="game-ui" class="ui-layer" style="display: none;">
+        <div class="top-bar">
+            <div class="score-board">
+                <div class="score-item"><span class="score-label">BEST</span><span id="best-score-display" class="score-value best">0</span></div>
+                <div class="score-item"><span class="score-label">NOW</span><span id="score-display" class="score-value">0</span></div>
+            </div>
+            <button class="btn-icon" id="settings-btn">⚙️</button>
+        </div>
+        <div id="dead-line" class="guide-line"></div>
+        
+        <!-- 弹窗 -->
+        <div id="watermelon-toast">
+            <div class="text-xl font-black text-gray-800 whitespace-nowrap" id="toast-text">继续挑战高分！</div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold text-gray-800 mb-6">设置</h2>
+            <div class="switch-row"><span class="text-gray-700 font-medium">🔊 音效</span><div id="sound-toggle" class="toggle-switch active" onclick="toggleSetting('sound')"></div></div>
+            <div class="switch-row"><span class="text-gray-700 font-medium">📳 震动</span><div id="vibrate-toggle" class="toggle-switch active" onclick="toggleSetting('vibrate')"></div></div>
+            <div class="mt-6 flex flex-col gap-3">
+                <button onclick="closeSettings()" class="btn btn-green w-full py-2">继续游戏</button>
+                <button onclick="backToHomeFromSettings()" class="btn btn-gray w-full py-2">返回首页</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 class="text-3xl font-black text-gray-800 mb-1">游戏失败</h2>
+            <p class="text-sm text-gray-400 mb-6">再接再厉！</p>
+            <div class="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-100">
+                <p class="text-xs text-gray-500 font-bold uppercase mb-1">本次得分</p>
+                <div id="final-score" class="text-5xl font-black text-indigo-600">0</div>
+            </div>
+            <div class="flex flex-col gap-3">
+                <button onclick="restartGame()" class="btn btn-green w-full py-3 text-lg shadow-md">🔄 再玩一次</button>
+                <button onclick="backToHome()" class="btn btn-gray w-full py-3 text-gray-600">🏠 返回首页</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let gameWidth = Math.min(window.innerWidth, 450);
+    let gameHeight = window.innerHeight;
+    
+    const CONFIG = {
+        deadLineY: gameHeight * 0.18, // 动态计算：高度的 18%
+        widthLimit: 450,
+        scoreKey: 'watermelon_scores_final_opt', 
+        dailyTotalKey: 'watermelon_daily_final_opt'
+    };
+
+    // --- 物理参数 (优化手感) ---
+    const FRUIT_PHYSICS = {
+        restitution: 0.2,
+        friction: 0.005,       
+        frictionStatic: 0.005, 
+        frictionAir: 0.01
+    };
+    
+    // --- 烟花系统 (升级版：流星雨效果) ---
+    class Fireworks {
+        constructor() {
+            this.canvas = document.getElementById('fireworks-canvas');
+            this.ctx = this.canvas.getContext('2d');
+            this.particles = [];
+            this.active = false;
+            this.resize();
+            window.addEventListener('resize', () => this.resize());
+        }
+        resize() { this.canvas.width = window.innerWidth; this.canvas.height = window.innerHeight; }
+        start() {
+            this.active = true; this.animate();
+            for(let i=0; i<8; i++) setTimeout(() => this.launchBatch(), i * 200);
+        }
+        stop() { this.active = false; this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); this.particles = []; }
+        
+        launchBatch() {
+            if(!this.active) return;
+            const x = Math.random() * this.canvas.width;
+            const y = Math.random() * (this.canvas.height * 0.5) + (this.canvas.height * 0.1);
+            // 更丰富的配色
+            const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff', '#ff4757', '#2ed573', '#ffa502'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            playFireworkSound(); 
+            
+            for (let i = 0; i < 60; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                // 速度随机性更大，模拟爆炸扩散
+                const speed = Math.random() * 6 + 2;
+                this.particles.push({
+                    x: x, y: y, 
+                    vx: Math.cos(angle) * speed, 
+                    vy: Math.sin(angle) * speed,
+                    alpha: 1, 
+                    color: color, 
+                    decay: Math.random() * 0.015 + 0.01, // 衰减慢一点
+                    gravity: 0.08 // 增加一点重力感
+                });
+            }
+        }
+
+        animate() {
+            if (!this.active && this.particles.length === 0) return;
+            this.ctx.globalCompositeOperation = 'destination-out';
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // 拖尾更长
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.globalCompositeOperation = 'lighter';
+            
+            for (let i = this.particles.length - 1; i >= 0; i--) {
+                const p = this.particles[i];
+                // 增加空气阻力，模拟真实爆炸后的减速
+                p.vx *= 0.96; 
+                p.vy *= 0.96;
+                p.vy += p.gravity; 
+                
+                p.x += p.vx; 
+                p.y += p.vy; 
+                p.alpha -= p.decay;
+
+                if (p.alpha <= 0) { this.particles.splice(i, 1); } else {
+                    this.ctx.beginPath(); 
+                    this.ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2); // 粒子稍微小一点更精致
+                    
+                    // 闪烁效果
+                    const flicker = Math.random() > 0.8 ? 0.5 : 1;
+                    this.ctx.fillStyle = p.color; 
+                    this.ctx.globalAlpha = p.alpha * flicker; 
+                    this.ctx.fill();
+                }
+            }
+            if (this.active || this.particles.length > 0) requestAnimationFrame(() => this.animate());
+        }
+    }
+    const fireworksSystem = new Fireworks();
+
+    // --- 水果纹理 ---
+    function createFruitTexture(emoji, radius) {
+        const canvas = document.createElement('canvas');
+        const size = radius * 2 + 10;
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath(); ctx.arc(size/2, size/2, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff4e6'; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+        ctx.font = `${radius * 1.2}px serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, size / 2, size / 2 + (radius * 0.15));
+        return canvas.toDataURL();
+    }
+
+    // 定义水果
+    const FRUITS_CONFIG = [
+        { radius: 20, score: 10, emoji: "🍓" }, 
+        { radius: 30, score: 20, emoji: "🍒" }, 
+        { radius: 40, score: 30, emoji: "🍊" }, 
+        { radius: 52, score: 40, emoji: "🍋" }, 
+        { radius: 64, score: 50, emoji: "🥝" }, 
+        { radius: 76, score: 60, emoji: "🍎" }, 
+        { radius: 88, score: 70, emoji: "🍑" }, 
+        { radius: 100, score: 80, emoji: "🥥" }, // 7: 椰子
+        { radius: 135, score: 100, emoji: "🍉" } // 8: 大西瓜
+    ];
+
+    const FRUITS = FRUITS_CONFIG.map(f => ({ ...f, texture: createFruitTexture(f.emoji, f.radius) }));
+
+    let settings = { sound: true, vibrate: true };
+    
+    const { Engine, Render, Runner, Bodies, Composite, Events, Body, Bounds } = Matter;
+
+    let engine, render, runner;
+    let currentFruit = null;
+    let isDropping = false;
+    let isGameOver = false;
+    let score = 0;
+    let sessionWatermelonCount = 0;
+    
+    let lastResumeTime = 0;
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playPopSound(sizeScale) {
+        if (!settings.sound) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400 - (sizeScale * 20), audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    }
+
+    // 灵动音效
+    function playFireworkSound() {
+        if (!settings.sound) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, t);
+        osc.frequency.exponentialRampToValueAtTime(1000, t + 0.1);
+        gain.gain.setValueAtTime(0.1, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.3);
+    }
+
+    function playOverSound() {
+        if (!settings.sound) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+    }
+
+    function getRecords() { try { return JSON.parse(localStorage.getItem(CONFIG.scoreKey) || '[]'); } catch { return []; } }
+    function saveRecord(newScore) {
+        let records = getRecords();
+        records.push({ score: newScore, date: Date.now() });
+        records.sort((a, b) => b.score - a.score);
+        records = records.slice(0, 3);
+        localStorage.setItem(CONFIG.scoreKey, JSON.stringify(records));
+        
+        const todayStr = new Date().toDateString(); 
+        let dailyData = { date: todayStr, totalCount: 0 };
+        try {
+            const stored = JSON.parse(localStorage.getItem(CONFIG.dailyTotalKey));
+            if (stored && stored.date === todayStr) { dailyData = stored; }
+        } catch(e) {}
+        
+        if (sessionWatermelonCount > 0) {
+            dailyData.totalCount += sessionWatermelonCount;
+            localStorage.setItem(CONFIG.dailyTotalKey, JSON.stringify(dailyData));
+        }
+    }
+    function getBestScore() { const records = getRecords(); return records.length > 0 ? records[0].score : 0; }
+
+    function updateHomeData() {
+        const list = document.getElementById('leaderboard-list');
+        const records = getRecords();
+        if (records.length === 0) {
+            list.innerHTML = '<li class="text-center text-gray-400 py-4 text-xs">暂无纪录，快来挑战！</li>';
+        } else {
+            let html = '';
+            records.slice(0, 3).forEach((rec, index) => {
+                let color = index === 0 ? 'text-yellow-500' : (index === 1 ? 'text-gray-500' : (index === 2 ? 'text-orange-500' : 'text-gray-400'));
+                let badge = index < 3 ? ['🥇','🥈','🥉'][index] : index + 1;
+                html += `<li class="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"><div class="flex items-center gap-3"><span class="${color} font-bold text-lg">${badge}</span><span class="text-gray-600 font-bold text-lg font-mono">${rec.score}</span></div><span class="text-xs text-gray-300">${new Date(rec.date).toLocaleDateString()}</span></li>`;
+            });
+            list.innerHTML = html;
+        }
+        const recordEl = document.getElementById('home-watermelon-record');
+        const todayStr = new Date().toDateString();
+        let displayCount = 0;
+        try {
+            const stored = JSON.parse(localStorage.getItem(CONFIG.dailyTotalKey));
+            if (stored && stored.date === todayStr) { displayCount = stored.totalCount; }
+        } catch(e) {}
+        
+        if (displayCount > 0) {
+            recordEl.style.display = 'flex';
+            document.getElementById('home-total-watermelon').innerText = displayCount;
+        } else {
+            recordEl.style.display = 'none';
+        }
+    }
+
+    function initGameEngine() {
+        engine = Engine.create({ positionIterations: 16, velocityIterations: 16 });
+        render = Render.create({
+            element: document.getElementById('game-container'),
+            engine: engine,
+            options: { width: gameWidth, height: gameHeight, wireframes: false, background: 'transparent', pixelRatio: window.devicePixelRatio }
+        });
+        createBoundaries();
+        Events.on(engine, 'collisionStart', handleCollision);
+        Events.on(engine, 'collisionActive', handleCollision); 
+        Events.on(engine, 'beforeUpdate', checkGameOver);
+        Render.run(render);
+        runner = Runner.create();
+    }
+
+    function createBoundaries() {
+        const wallOptions = { isStatic: true, render: { fillStyle: '#d4a373' }, friction: 0.05 };
+        Composite.add(engine.world, [
+            Bodies.rectangle(gameWidth / 2, gameHeight + 50, gameWidth, 100, wallOptions),
+            Bodies.rectangle(-25, gameHeight / 2, 50, gameHeight * 2, wallOptions),
+            Bodies.rectangle(gameWidth + 25, gameHeight / 2, 50, gameHeight * 2, wallOptions)
+        ]);
+    }
+
+    function createNewFruit() {
+        if (isGameOver || currentFruit != null) return;
+        
+        const spawnX = gameWidth / 2;
+        const spawnY = 60;
+        const bodies = Composite.allBodies(engine.world);
+        const isBlocked = bodies.some(b => {
+            if (b.isStatic || b.isSensor) return false;
+            const dx = b.position.x - spawnX;
+            const dy = b.position.y - spawnY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            return dist < 30; 
+        });
+
+        if (isBlocked) { triggerGameOver(); return; }
+
+        const index = Math.floor(Math.random() * 5); 
+        const fruitData = FRUITS[index];
+        
+        currentFruit = Bodies.circle(spawnX, spawnY, fruitData.radius, {
+            isStatic: true, isSensor: true, label: 'currentFruit',
+            render: { sprite: { texture: fruitData.texture, xScale: 1, yScale: 1 } }
+        });
+        currentFruit.fruitId = index;
+        currentFruit.radius = fruitData.radius;
+        Composite.add(engine.world, currentFruit);
+        isDropping = false;
+    }
+
+    function dropFruit(e) {
+        if (e && e.target && (e.target.closest('.modal-overlay') || e.target.closest('button') || e.target.closest('.btn-icon'))) return;
+        if (isDropping || !currentFruit || isGameOver) return;
+        
+        isDropping = true;
+        Body.setStatic(currentFruit, false);
+        currentFruit.isSensor = false; 
+        currentFruit.friction = FRUIT_PHYSICS.friction;
+        currentFruit.frictionStatic = FRUIT_PHYSICS.frictionStatic;
+        currentFruit.frictionAir = FRUIT_PHYSICS.frictionAir;
+        currentFruit.restitution = FRUIT_PHYSICS.restitution;
+        
+        currentFruit.spawnTime = Date.now();
+        const droppedFruit = currentFruit; 
+        currentFruit = null;
+        setTimeout(() => { if (!isGameOver) createNewFruit(); }, 800);
+    }
+
+    function handleCollision(event) {
+        if (isGameOver) return;
+        const pairs = event.pairs;
+        for (let i = 0; i < pairs.length; i++) {
+            const { bodyA, bodyB } = pairs[i];
+            if (bodyA.isSensor || bodyB.isSensor) continue;
+            if (bodyA.fruitId !== undefined && bodyB.fruitId !== undefined && !bodyA.pendingRemoval && !bodyB.pendingRemoval) {
+                if (bodyA.fruitId === bodyB.fruitId) {
+                    bodyA.pendingRemoval = true; bodyB.pendingRemoval = true;
+                    mergeFruits(bodyA, bodyB);
+                }
+            }
+        }
+    }
+
+    function mergeFruits(bodyA, bodyB) {
+        const midX = (bodyA.position.x + bodyB.position.x) / 2;
+        const midY = (bodyA.position.y + bodyB.position.y) / 2;
+        const currentId = bodyA.fruitId;
+        const nextId = currentId + 1;
+        
+        Composite.remove(engine.world, [bodyA, bodyB]);
+        playPopSound(nextId);
+        if (settings.vibrate && navigator.vibrate) navigator.vibrate(15);
+        score += FRUITS[currentId].score * 2;
+        updateUI();
+
+        // Index 8 (大西瓜)
+        if (nextId === 8) { 
+            sessionWatermelonCount++;
+            showWatermelonToast(sessionWatermelonCount);
+        }
+
+        // 两个大西瓜合成
+        if (nextId > 8) { 
+            score += 1000; 
+            showChallengeToast(); 
+            return; 
+        }
+
+        const nextFruitData = FRUITS[nextId];
+        const newBody = Bodies.circle(midX, midY, nextFruitData.radius, {
+            render: { sprite: { texture: nextFruitData.texture, xScale: 1, yScale: 1 } },
+            friction: FRUIT_PHYSICS.friction,
+            frictionStatic: FRUIT_PHYSICS.frictionStatic,
+            frictionAir: FRUIT_PHYSICS.frictionAir,
+            restitution: FRUIT_PHYSICS.restitution
+        });
+        newBody.fruitId = nextId;
+        newBody.radius = nextFruitData.radius;
+        newBody.spawnTime = Date.now(); 
+        Composite.add(engine.world, newBody);
+    }
+
+    let toastTimeout;
+    function showWatermelonToast(count) {
+        const toast = document.getElementById('watermelon-toast');
+        const text = document.getElementById('toast-text');
+        text.innerText = `成功合成大西瓜！`; 
+        toast.classList.add('show');
+        fireworksSystem.start();
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => { 
+            toast.classList.remove('show'); 
+            fireworksSystem.stop();
+        }, 2000); 
+    }
+
+    function showChallengeToast() {
+        const toast = document.getElementById('watermelon-toast');
+        const text = document.getElementById('toast-text');
+        text.innerText = `继续挑战高分！`; 
+        toast.classList.add('show');
+        fireworksSystem.start();
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => { 
+            toast.classList.remove('show'); 
+            fireworksSystem.stop();
+        }, 1500); 
+    }
+
+    function checkGameOver() {
+        if (isGameOver) return;
+        if (Date.now() - lastResumeTime < 2000) return;
+        const bodies = Composite.allBodies(engine.world);
+        const now = Date.now();
+        for (let body of bodies) {
+            if (body.isStatic || body.isSensor) continue;
+            if (body.spawnTime && (now - body.spawnTime < 1000)) continue;
+            const topY = body.position.y - (body.radius || 0);
+            // 使用自适应警戒线高度
+            if (topY < CONFIG.deadLineY && body.speed < 0.5) { triggerGameOver(); break; }
+        }
+    }
+
+    function triggerGameOver() {
+        isGameOver = true;
+        playOverSound();
+        Runner.stop(runner);
+        saveRecord(score);
+        document.getElementById('final-score').innerText = score;
+        document.getElementById('game-over-modal').style.display = 'flex';
+    }
+
+    function startGame() {
+        document.getElementById('home-screen').style.display = 'none';
+        document.getElementById('game-ui').style.display = 'block';
+        if (!engine) initEngineSafely();
+        resetGame();
+    }
+    function initEngineSafely() {
+        if (render) { Render.stop(render); if (render.canvas) render.canvas.remove(); }
+        initGameEngine();
+    }
+    function resetGame() {
+        isGameOver = false; score = 0; sessionWatermelonCount = 0; updateUI();
+        Composite.clear(engine.world, false); createBoundaries(); Runner.run(runner, engine);
+        currentFruit = null; createNewFruit();
+        document.getElementById('game-over-modal').style.display = 'none';
+        document.getElementById('settings-modal').style.display = 'none';
+        lastResumeTime = Date.now(); 
+    }
+    function restartGame() { resetGame(); }
+    function backToHome() {
+        isGameOver = true; if(runner) Runner.stop(runner);
+        document.getElementById('game-ui').style.display = 'none';
+        document.getElementById('game-over-modal').style.display = 'none';
+        document.getElementById('home-screen').style.display = 'flex';
+        updateHomeData();
+    }
+    function updateUI() {
+        document.getElementById('score-display').innerText = score;
+        document.getElementById('best-score-display').innerText = Math.max(score, getBestScore());
+    }
+    function openSettings() { Runner.stop(runner); document.getElementById('settings-modal').style.display = 'flex'; }
+    function closeSettings() { Runner.run(runner, engine); document.getElementById('settings-modal').style.display = 'none'; lastResumeTime = Date.now(); }
+    function backToHomeFromSettings() { closeSettings(); backToHome(); }
+    function toggleSetting(key) {
+        settings[key] = !settings[key];
+        const el = document.getElementById(key + '-toggle');
+        if (settings[key]) el.classList.add('active'); else el.classList.remove('active');
+    }
+
+    const settingsBtn = document.getElementById('settings-btn');
+    ['mousedown', 'touchstart', 'mouseup', 'touchend'].forEach(evt => {
+        settingsBtn.addEventListener(evt, (e) => { e.stopPropagation(); if (evt === 'mousedown' || evt === 'touchstart') openSettings(); });
+    });
+    const modals = document.querySelectorAll('.modal-overlay');
+    modals.forEach(modal => {
+        ['mousedown', 'mousemove', 'mouseup', 'touchstart', 'touchmove', 'touchend'].forEach(evt => { modal.addEventListener(evt, (e) => { e.stopPropagation(); }); });
+    });
+
+    function handleInputMove(clientX) {
+        if (isDropping || !currentFruit || isGameOver) return;
+        const canvasRect = render.canvas.getBoundingClientRect();
+        let x = clientX - canvasRect.left;
+        const r = currentFruit.radius;
+        if (x < r) x = r;
+        if (x > gameWidth - r) x = gameWidth - r;
+        Body.setPosition(currentFruit, { x: x, y: 60 });
+    }
+
+    const container = document.getElementById('game-container');
+    container.addEventListener('mousemove', (e) => handleInputMove(e.clientX));
+    container.addEventListener('mouseup', dropFruit);
+    container.addEventListener('touchmove', (e) => { 
+        if (e.target.closest('.modal-overlay')) return; 
+        e.preventDefault(); handleInputMove(e.touches[0].clientX); 
+    }, { passive: false });
+    container.addEventListener('touchend', (e) => { 
+        if (e.target.closest('.modal-overlay')) return; 
+        e.preventDefault(); dropFruit(e); 
+    });
+
+    // 自适应窗口大小变化，更新游戏宽度和警戒线
+    window.addEventListener('resize', () => {
+        gameWidth = Math.min(window.innerWidth, 450);
+        gameHeight = window.innerHeight;
+        CONFIG.deadLineY = gameHeight * 0.18; // 更新警戒线
+        
+        // 注意：在实际项目中可能需要更复杂的逻辑来处理canvas大小重置而不丢失游戏状态
+        // 这里简单处理，canvas大小通常由render自动处理，但边界需要更新
+        if(render) {
+            render.canvas.width = gameWidth;
+            render.canvas.height = gameHeight;
+        }
+        // 更新墙壁位置 (如果有必要，这里略过，因为通常resize会刷新页面或需要更复杂的状态管理)
+    });
+
+    updateHomeData();
+</script>
+</body>
+</html>
