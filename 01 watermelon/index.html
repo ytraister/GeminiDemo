@@ -476,7 +476,7 @@
             render: { 
                 sprite: { 
                     texture: fruitData.texture, 
-                    xScale: fruitData.scale, // 使用缩小比例
+                    xScale: fruitData.scale, 
                     yScale: fruitData.scale 
                 } 
             }
@@ -675,6 +675,15 @@
     container.addEventListener('mousemove', (e) => handleInputMove(e.clientX));
     container.addEventListener('mouseup', dropFruit);
     
+    // 移动端交互优化：touchstart 立即跟随，解决点击瞬移问题
+    container.addEventListener('touchstart', (e) => {
+        // 排除 UI 元素点击
+        if (e.target.closest('.modal-overlay') || e.target.closest('#home-screen') || e.target.closest('.btn') || e.target.closest('.btn-icon')) return;
+        
+        e.preventDefault();
+        handleInputMove(e.touches[0].clientX);
+    }, { passive: false });
+
     container.addEventListener('touchmove', (e) => { 
         if (e.target.closest('.modal-overlay') || e.target.closest('#home-screen')) return; 
         e.preventDefault(); 
