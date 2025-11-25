@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>合成大西瓜 - 最终版</title>
+    <title>合成大西瓜-最终版</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Matter.js 物理引擎 -->
@@ -88,7 +88,7 @@
     <div id="home-screen">
         <div class="mb-6 text-center transform scale-110 mt-8">
             <h1 class="text-5xl font-black text-green-700 tracking-wider mb-2" style="text-shadow: 3px 3px 0px #fff;">合成大西瓜</h1>
-            <p class="text-green-800/70 font-bold tracking-widest text-sm">FINAL EDITION</p>
+            <p class="text-green-800/70 font-bold tracking-widest text-sm">MOBILE FIXED</p>
         </div>
         
         <div id="home-watermelon-record" class="mb-6 px-5 py-3 bg-red-100/90 border-2 border-red-200 rounded-xl flex items-center justify-center gap-2 shadow-sm" style="display: none;">
@@ -163,7 +163,7 @@
         dailyTotalKey: 'watermelon_daily_final_opt'
     };
 
-    // --- 物理参数 (优化手感) ---
+    // --- 物理参数 ---
     const FRUIT_PHYSICS = {
         restitution: 0.2,
         friction: 0.005,       
@@ -171,7 +171,7 @@
         frictionAir: 0.01
     };
     
-    // --- 烟花系统 (升级版：流星雨效果) ---
+    // --- 烟花系统 ---
     class Fireworks {
         constructor() {
             this.canvas = document.getElementById('fireworks-canvas');
@@ -192,14 +192,12 @@
             if(!this.active) return;
             const x = Math.random() * this.canvas.width;
             const y = Math.random() * (this.canvas.height * 0.5) + (this.canvas.height * 0.1);
-            // 更丰富的配色
             const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff', '#ff4757', '#2ed573', '#ffa502'];
             const color = colors[Math.floor(Math.random() * colors.length)];
             playFireworkSound(); 
             
             for (let i = 0; i < 60; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                // 速度随机性更大，模拟爆炸扩散
                 const speed = Math.random() * 6 + 2;
                 this.particles.push({
                     x: x, y: y, 
@@ -207,8 +205,8 @@
                     vy: Math.sin(angle) * speed,
                     alpha: 1, 
                     color: color, 
-                    decay: Math.random() * 0.015 + 0.01, // 衰减慢一点
-                    gravity: 0.08 // 增加一点重力感
+                    decay: Math.random() * 0.015 + 0.01, 
+                    gravity: 0.08
                 });
             }
         }
@@ -216,26 +214,22 @@
         animate() {
             if (!this.active && this.particles.length === 0) return;
             this.ctx.globalCompositeOperation = 'destination-out';
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // 拖尾更长
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             this.ctx.globalCompositeOperation = 'lighter';
             
             for (let i = this.particles.length - 1; i >= 0; i--) {
                 const p = this.particles[i];
-                // 增加空气阻力，模拟真实爆炸后的减速
                 p.vx *= 0.96; 
                 p.vy *= 0.96;
                 p.vy += p.gravity; 
-                
                 p.x += p.vx; 
                 p.y += p.vy; 
                 p.alpha -= p.decay;
 
                 if (p.alpha <= 0) { this.particles.splice(i, 1); } else {
                     this.ctx.beginPath(); 
-                    this.ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2); // 粒子稍微小一点更精致
-                    
-                    // 闪烁效果
+                    this.ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
                     const flicker = Math.random() > 0.8 ? 0.5 : 1;
                     this.ctx.fillStyle = p.color; 
                     this.ctx.globalAlpha = p.alpha * flicker; 
@@ -307,7 +301,6 @@
         osc.start(); osc.stop(audioCtx.currentTime + 0.15);
     }
 
-    // 灵动音效
     function playFireworkSound() {
         if (!settings.sound) return;
         if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -446,7 +439,9 @@
     }
 
     function dropFruit(e) {
+        // Mobile check: don't drop if clicking UI
         if (e && e.target && (e.target.closest('.modal-overlay') || e.target.closest('button') || e.target.closest('.btn-icon'))) return;
+        
         if (isDropping || !currentFruit || isGameOver) return;
         
         isDropping = true;
@@ -553,7 +548,6 @@
             if (body.isStatic || body.isSensor) continue;
             if (body.spawnTime && (now - body.spawnTime < 1000)) continue;
             const topY = body.position.y - (body.radius || 0);
-            // 使用自适应警戒线高度
             if (topY < CONFIG.deadLineY && body.speed < 0.5) { triggerGameOver(); break; }
         }
     }
@@ -568,6 +562,10 @@
     }
 
     function startGame() {
+        // Resume audio on user gesture
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
         document.getElementById('home-screen').style.display = 'none';
         document.getElementById('game-ui').style.display = 'block';
         if (!engine) initEngineSafely();
@@ -628,28 +626,34 @@
     const container = document.getElementById('game-container');
     container.addEventListener('mousemove', (e) => handleInputMove(e.clientX));
     container.addEventListener('mouseup', dropFruit);
+    
+    // Mobile Event Handling with Exclusions for UI elements
     container.addEventListener('touchmove', (e) => { 
-        if (e.target.closest('.modal-overlay')) return; 
-        e.preventDefault(); handleInputMove(e.touches[0].clientX); 
+        // Don't intercept scrolling on home screen or if touching modals
+        if (e.target.closest('.modal-overlay') || e.target.closest('#home-screen')) return; 
+        
+        e.preventDefault(); 
+        handleInputMove(e.touches[0].clientX); 
     }, { passive: false });
+    
     container.addEventListener('touchend', (e) => { 
-        if (e.target.closest('.modal-overlay')) return; 
-        e.preventDefault(); dropFruit(e); 
+        // Don't trigger drop if clicking a button or on home screen
+        if (e.target.closest('.modal-overlay') || e.target.closest('#home-screen') || e.target.closest('.btn') || e.target.closest('.btn-icon')) return;
+        
+        e.preventDefault(); 
+        dropFruit(e); 
     });
 
     // 自适应窗口大小变化，更新游戏宽度和警戒线
     window.addEventListener('resize', () => {
         gameWidth = Math.min(window.innerWidth, 450);
         gameHeight = window.innerHeight;
-        CONFIG.deadLineY = gameHeight * 0.18; // 更新警戒线
+        CONFIG.deadLineY = gameHeight * 0.18; 
         
-        // 注意：在实际项目中可能需要更复杂的逻辑来处理canvas大小重置而不丢失游戏状态
-        // 这里简单处理，canvas大小通常由render自动处理，但边界需要更新
         if(render) {
             render.canvas.width = gameWidth;
             render.canvas.height = gameHeight;
         }
-        // 更新墙壁位置 (如果有必要，这里略过，因为通常resize会刷新页面或需要更复杂的状态管理)
     });
 
     updateHomeData();
