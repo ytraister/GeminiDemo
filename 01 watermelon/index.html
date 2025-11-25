@@ -2,19 +2,31 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>合成大西瓜-最终版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>合成大西瓜 - 最终版</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Matter.js 物理引擎 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #ffe8a3; touch-action: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; -webkit-user-select: none; }
-        #game-container { position: relative; width: 100%; height: 100vh; display: flex; justify-content: center; align-items: flex-end; background: #ffe8a3; }
+        /* 禁止页面滚动，使用 fixed 布局占满屏幕 */
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #ffe8a3; touch-action: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+        
+        /* 关键修复：使用 fixed + inset:0 确保在移动端完全覆盖可视区域，解决 100vh 被地址栏遮挡问题 */
+        #game-container { 
+            position: fixed; 
+            inset: 0;
+            width: 100%; 
+            height: 100dvh; /* 动态视口高度，适配移动端地址栏 */
+            display: flex; 
+            justify-content: center; 
+            align-items: flex-end; 
+            background: #ffe8a3; 
+        }
         
         /* 游戏画布 */
-        canvas { display: block; box-shadow: 0 0 20px rgba(0,0,0,0.1); border-radius: 4px; z-index: 1; }
+        canvas { display: block; box-shadow: 0 0 20px rgba(0,0,0,0.1); border-radius: 4px; z-index: 1; touch-action: none; }
         
         /* 烟花画布 */
         #fireworks-canvas {
@@ -24,7 +36,7 @@
 
         /* UI 层 */
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; z-index: 20; }
-        .top-bar { pointer-events: auto; padding: 12px 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .top-bar { pointer-events: auto; padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top)); /* 适配刘海屏 */ display: flex; justify-content: space-between; align-items: flex-start; }
         
         .score-board {
             background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(4px); padding: 8px 12px; border-radius: 12px;
@@ -88,7 +100,7 @@
     <div id="home-screen">
         <div class="mb-6 text-center transform scale-110 mt-8">
             <h1 class="text-5xl font-black text-green-700 tracking-wider mb-2" style="text-shadow: 3px 3px 0px #fff;">合成大西瓜</h1>
-            <p class="text-green-800/70 font-bold tracking-widest text-sm">MOBILE FIXED</p>
+            <p class="text-green-800/70 font-bold tracking-widest text-sm">MOBILE HD</p>
         </div>
         
         <div id="home-watermelon-record" class="mb-6 px-5 py-3 bg-red-100/90 border-2 border-red-200 rounded-xl flex items-center justify-center gap-2 shadow-sm" style="display: none;">
@@ -153,6 +165,7 @@
 </div>
 
 <script>
+    // 获取精确的视窗高度，解决移动端遮挡问题
     let gameWidth = Math.min(window.innerWidth, 450);
     let gameHeight = window.innerHeight;
     
@@ -241,18 +254,36 @@
     }
     const fireworksSystem = new Fireworks();
 
-    // --- 水果纹理 ---
+    // --- 关键优化：高清水果纹理生成 (High-DPI Support) ---
     function createFruitTexture(emoji, radius) {
+        // 增加像素倍率，解决移动端模糊问题
+        const quality = 3; 
         const canvas = document.createElement('canvas');
-        const size = radius * 2 + 10;
-        canvas.width = size; canvas.height = size;
+        // 画布尺寸放大3倍
+        const size = (radius * 2 + 10) * quality;
+        canvas.width = size;
+        canvas.height = size;
         const ctx = canvas.getContext('2d');
-        ctx.beginPath(); ctx.arc(size/2, size/2, radius, 0, Math.PI * 2);
-        ctx.fillStyle = '#fff4e6'; ctx.fill();
-        ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke();
-        ctx.font = `${radius * 1.2}px serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(emoji, size / 2, size / 2 + (radius * 0.15));
+        
+        const center = size / 2;
+        const scaledRadius = radius * quality;
+
+        // 绘制底色圆
+        ctx.beginPath();
+        ctx.arc(center, center, scaledRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff4e6';
+        ctx.fill();
+        ctx.lineWidth = 2 * quality;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // 绘制 Emoji (字体也放大)
+        ctx.font = `${scaledRadius * 1.2}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // 微调位置
+        ctx.fillText(emoji, center, center + (scaledRadius * 0.15));
+        
         return canvas.toDataURL();
     }
 
@@ -269,7 +300,12 @@
         { radius: 135, score: 100, emoji: "🍉" } // 8: 大西瓜
     ];
 
-    const FRUITS = FRUITS_CONFIG.map(f => ({ ...f, texture: createFruitTexture(f.emoji, f.radius) }));
+    // 处理配置，添加缩放比例
+    const FRUITS = FRUITS_CONFIG.map(f => ({ 
+        ...f, 
+        texture: createFruitTexture(f.emoji, f.radius),
+        scale: 1 / 3 // 对应 quality = 3，渲染时缩小回原尺寸
+    }));
 
     let settings = { sound: true, vibrate: true };
     
@@ -390,7 +426,13 @@
         render = Render.create({
             element: document.getElementById('game-container'),
             engine: engine,
-            options: { width: gameWidth, height: gameHeight, wireframes: false, background: 'transparent', pixelRatio: window.devicePixelRatio }
+            options: { 
+                width: gameWidth, 
+                height: gameHeight, 
+                wireframes: false, 
+                background: 'transparent', 
+                pixelRatio: window.devicePixelRatio // 保持高清渲染
+            }
         });
         createBoundaries();
         Events.on(engine, 'collisionStart', handleCollision);
@@ -403,6 +445,7 @@
     function createBoundaries() {
         const wallOptions = { isStatic: true, render: { fillStyle: '#d4a373' }, friction: 0.05 };
         Composite.add(engine.world, [
+            // 底部位置更新，确保在底部对齐
             Bodies.rectangle(gameWidth / 2, gameHeight + 50, gameWidth, 100, wallOptions),
             Bodies.rectangle(-25, gameHeight / 2, 50, gameHeight * 2, wallOptions),
             Bodies.rectangle(gameWidth + 25, gameHeight / 2, 50, gameHeight * 2, wallOptions)
@@ -430,7 +473,13 @@
         
         currentFruit = Bodies.circle(spawnX, spawnY, fruitData.radius, {
             isStatic: true, isSensor: true, label: 'currentFruit',
-            render: { sprite: { texture: fruitData.texture, xScale: 1, yScale: 1 } }
+            render: { 
+                sprite: { 
+                    texture: fruitData.texture, 
+                    xScale: fruitData.scale, // 使用缩小比例
+                    yScale: fruitData.scale 
+                } 
+            }
         });
         currentFruit.fruitId = index;
         currentFruit.radius = fruitData.radius;
@@ -439,9 +488,7 @@
     }
 
     function dropFruit(e) {
-        // Mobile check: don't drop if clicking UI
         if (e && e.target && (e.target.closest('.modal-overlay') || e.target.closest('button') || e.target.closest('.btn-icon'))) return;
-        
         if (isDropping || !currentFruit || isGameOver) return;
         
         isDropping = true;
@@ -485,13 +532,11 @@
         score += FRUITS[currentId].score * 2;
         updateUI();
 
-        // Index 8 (大西瓜)
         if (nextId === 8) { 
             sessionWatermelonCount++;
             showWatermelonToast(sessionWatermelonCount);
         }
 
-        // 两个大西瓜合成
         if (nextId > 8) { 
             score += 1000; 
             showChallengeToast(); 
@@ -500,7 +545,13 @@
 
         const nextFruitData = FRUITS[nextId];
         const newBody = Bodies.circle(midX, midY, nextFruitData.radius, {
-            render: { sprite: { texture: nextFruitData.texture, xScale: 1, yScale: 1 } },
+            render: { 
+                sprite: { 
+                    texture: nextFruitData.texture, 
+                    xScale: nextFruitData.scale, 
+                    yScale: nextFruitData.scale 
+                } 
+            },
             friction: FRUIT_PHYSICS.friction,
             frictionStatic: FRUIT_PHYSICS.frictionStatic,
             frictionAir: FRUIT_PHYSICS.frictionAir,
@@ -562,10 +613,7 @@
     }
 
     function startGame() {
-        // Resume audio on user gesture
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
+        if (audioCtx.state === 'suspended') { audioCtx.resume(); }
         document.getElementById('home-screen').style.display = 'none';
         document.getElementById('game-ui').style.display = 'block';
         if (!engine) initEngineSafely();
@@ -627,29 +675,22 @@
     container.addEventListener('mousemove', (e) => handleInputMove(e.clientX));
     container.addEventListener('mouseup', dropFruit);
     
-    // Mobile Event Handling with Exclusions for UI elements
     container.addEventListener('touchmove', (e) => { 
-        // Don't intercept scrolling on home screen or if touching modals
         if (e.target.closest('.modal-overlay') || e.target.closest('#home-screen')) return; 
-        
         e.preventDefault(); 
         handleInputMove(e.touches[0].clientX); 
     }, { passive: false });
     
     container.addEventListener('touchend', (e) => { 
-        // Don't trigger drop if clicking a button or on home screen
         if (e.target.closest('.modal-overlay') || e.target.closest('#home-screen') || e.target.closest('.btn') || e.target.closest('.btn-icon')) return;
-        
         e.preventDefault(); 
         dropFruit(e); 
     });
 
-    // 自适应窗口大小变化，更新游戏宽度和警戒线
     window.addEventListener('resize', () => {
         gameWidth = Math.min(window.innerWidth, 450);
         gameHeight = window.innerHeight;
         CONFIG.deadLineY = gameHeight * 0.18; 
-        
         if(render) {
             render.canvas.width = gameWidth;
             render.canvas.height = gameHeight;
